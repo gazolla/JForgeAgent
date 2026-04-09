@@ -256,6 +256,8 @@ JForge creates and manages four directories relative to where you run it:
 │   └── ...
 ├── logs/           ← Session logs (last 3 sessions retained)
 │   └── session_20260408_143022.log
+├── memory/         ← Persistent conversation memory (one entry per line)
+│   └── context.json
 ├── artifacts/      ← Temporary data written by tools (extractions, raw downloads)
 └── products/       ← Final output files for the user (reports, PDFs, exports)
 ```
@@ -279,6 +281,18 @@ JForge executes LLM-generated code on your machine. Several layers of defense ar
 | **Loop guard** | The orchestration loop aborts after 10 iterations regardless of state |
 | **Search guard** | Maximum 3 web searches per user demand |
 | **Crash limit** | Auto-heal retries are capped at 2 attempts per demand |
+
+---
+
+### Persistent Memory
+
+JForge automatically saves conversation history to `memory/context.json` between sessions. On the next startup, the Router reads the last interactions as `[Recent Chat History]`, allowing it to:
+
+- Recognize tools it built in a previous session without rebuilding them
+- Avoid repeating web searches already performed
+- Maintain conversational continuity across restarts
+
+The memory file stores entries in plain text (one per line) and is updated after every interaction. It is capped at 20 entries — the oldest are evicted when full. To reset memory to a clean state, simply delete `memory/context.json`.
 
 ---
 
@@ -306,6 +320,7 @@ jbang JForgeAgent.java [OPTIONS]
 | `--model <model>` | `gemini-3-pro-preview` | Gemini model used by all three agents |
 | `--max-tools <n>` | `10` | Maximum cached tools before GC count-eviction |
 | `--tool-age-days <n>` | `30` | Days of inactivity before a tool is eligible for deletion |
+| `--prompt <text>` | — | Run a single prompt non-interactively and exit (CI/CD mode) |
 | `-V`, `--version` | — | Print version and exit |
 | `-h`, `--help` | — | Print help and exit |
 
@@ -319,7 +334,35 @@ jbang .\JForgeAgent.java --tool-age-days 7 --max-tools 5
 
 # Use the most capable model for complex engineering tasks
 jbang .\JForgeAgent.java --model gemini-3-pro-preview
+
+# Run a single prompt without opening an interactive session
+jbang .\JForgeAgent.java --prompt "What is the current price of Bitcoin?"
 ```
+
+---
+
+## Non-Interactive Mode
+
+JForge can run a single prompt without an interactive terminal — ideal for shell scripts, CI/CD pipelines, and automation:
+
+```bash
+# Ask a question non-interactively
+jbang JForgeAgent.java --prompt "What is the current price of Bitcoin?"
+
+# Use inside a shell script
+jbang JForgeAgent.java --prompt "Fetch the ISS location and save the map to products/"
+
+# Combine with other CLI options
+jbang JForgeAgent.java --model gemini-2.0-flash --prompt "List my Downloads folder"
+```
+
+When `--prompt` is provided, JForge:
+1. Initializes all agents normally
+2. Loads persistent memory from previous sessions
+3. Executes the prompt through the full orchestration loop (including tool creation, search, and auto-heal)
+4. Prints the result and exits with code `0`
+
+> **Note:** If `--prompt` is not set and no interactive terminal is available, JForge exits with an error as before.
 
 ---
 

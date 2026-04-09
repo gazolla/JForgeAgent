@@ -49,6 +49,8 @@ public class JForgeAgent implements Callable<Integer> {
     private static final Path LOGS_DIR                = Path.of("logs");
     private static final Path ARTIFACTS_DIR           = Path.of("artifacts");
     private static final Path PRODUCTS_DIR            = Path.of("products");
+    private static final Path MEMORY_DIR              = Path.of("memory");
+    private static final Path MEMORY_FILE             = MEMORY_DIR.resolve("context.json");
 
     private static final int  MAX_MEMORY_ENTRIES_CONST = 20;   // kept internal — not user-tunable
     private static final int  MAX_HISTORY_CHARS_CONST   = 2000;
@@ -72,6 +74,11 @@ public class JForgeAgent implements Callable<Integer> {
         description = "Days before an unused tool is eligible for GC deletion (default: 30)",
         defaultValue = "30")
     private long maxToolAgeDays = 30;
+
+    @CommandLine.Option(names = {"--prompt"},
+        description = "Run a single prompt non-interactively and exit (CI/CD/pipe mode)")
+    private String promptFlag;
+
     private static final int  MAX_MEMORY_ENTRIES      = MAX_MEMORY_ENTRIES_CONST;
     private static final int  MAX_HISTORY_CHARS       = MAX_HISTORY_CHARS_CONST;
     private static final int  MAX_LOOP_ITERATIONS     = MAX_LOOP_ITERATIONS_CONST;
@@ -152,8 +159,10 @@ public class JForgeAgent implements Callable<Integer> {
         Files.createDirectories(LOGS_DIR);
         Files.createDirectories(ARTIFACTS_DIR);
         Files.createDirectories(PRODUCTS_DIR);
+        Files.createDirectories(MEMORY_DIR);
 
         initLogging();
+        loadMemory();
 
         router    = new Agent("router",    defaultModel, ROUTER_INSTRUCTION);
         coder     = new Agent("coder",     defaultModel, CODER_INSTRUCTION);
@@ -161,7 +170,14 @@ public class JForgeAgent implements Callable<Integer> {
         searcher  = new Agent("searcher",  defaultModel, SEARCHER_INSTRUCTION, new GoogleSearchTool());
 
         System.out.println(AUTO.string("@|faint [LLM] Model: " + defaultModel + " | Agents: router, coder, assistant, searcher|@"));
-        startChatMenu();
+        if (promptFlag != null && !promptFlag.isBlank()) {
+            printWelcome();
+            runGarbageCollector();
+            logToFile("[USER] " + promptFlag);
+            processDemand(promptFlag);
+        } else {
+            startChatMenu();
+        }
         return 0;
     }
 
@@ -196,6 +212,27 @@ public class JForgeAgent implements Callable<Integer> {
             conversationMemory.pollFirst();
         }
         conversationMemory.addLast(entry);
+        saveMemory();
+    }
+
+    private void loadMemory() {
+        if (!Files.exists(MEMORY_FILE)) return;
+        try {
+            List<String> lines = Files.readAllLines(MEMORY_FILE);
+            int start = Math.max(0, lines.size() - MAX_MEMORY_ENTRIES);
+            lines.subList(start, lines.size()).forEach(conversationMemory::addLast);
+            logToFile("[MEMORY] Loaded " + (lines.size() - start) + " entries from persistent memory.");
+        } catch (Exception e) {
+            logToFile("[WARN] Could not load memory file — starting empty: " + e.getMessage());
+        }
+    }
+
+    private void saveMemory() {
+        try {
+            Files.write(MEMORY_FILE, new ArrayList<>(conversationMemory));
+        } catch (Exception e) {
+            logToFile("[WARN] Could not persist memory: " + e.getMessage());
+        }
     }
 
     private void rotateLogs() {
