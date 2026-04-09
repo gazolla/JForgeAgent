@@ -76,6 +76,10 @@ public class JForgeAgent implements Callable<Integer> {
             "--skip-test" }, description = "Skip automatic test after CREATE (use for GUI/Swing or hardware-dependent tools)", defaultValue = "false")
     private boolean skipTest = false;
 
+    @CommandLine.Option(names = {
+            "--silent" }, description = "Suppress all status/decorative output; print only the final result (for pipe/MCP/A2A use)", defaultValue = "false")
+    private boolean silent = false;
+
     private static final int MAX_MEMORY_ENTRIES = MAX_MEMORY_ENTRIES_CONST;
     private static final int MAX_HISTORY_CHARS = MAX_HISTORY_CHARS_CONST;
     private static final int MAX_LOOP_ITERATIONS = MAX_LOOP_ITERATIONS_CONST;
@@ -133,6 +137,9 @@ public class JForgeAgent implements Callable<Integer> {
     private long lastGcRun = 0; // throttle: prevents redundant filesystem scans within the same minute
     private final Deque<String> conversationMemory = new ArrayDeque<>();
 
+    /** Captures the last result text when running in --silent / machine mode. */
+    private final StringBuilder resultBuffer = new StringBuilder();
+
     private Agent router;
     private Agent coder;
     private Agent assistant;
@@ -177,11 +184,10 @@ public class JForgeAgent implements Callable<Integer> {
         searcher = new Agent("searcher", defaultModel, SEARCHER_INSTRUCTION, new GoogleSearchTool());
         tester = new Agent("tester", defaultModel, TESTER_INSTRUCTION);
 
-        System.out.println(AUTO
-                .string("@|faint [LLM] Model: " + defaultModel
-                        + " | Agents: router, coder, assistant, searcher, tester|@"));
+        status("@|faint [LLM] Model: " + defaultModel
+                + " | Agents: router, coder, assistant, searcher, tester|@");
         if (promptFlag != null && !promptFlag.isBlank()) {
-            printWelcome();
+            if (!silent) printWelcome();
             runGarbageCollector();
             logToFile("[USER] " + promptFlag);
             processDemand(promptFlag);
@@ -192,13 +198,11 @@ public class JForgeAgent implements Callable<Integer> {
     }
 
     private void printWelcome() {
-        System.out.println(AUTO.string("@|bold,cyan Welcome to JForge V1.0 - Tool Orchestrator.|@"));
-        System.out.println(AUTO.string("Available tools are cached in: @|yellow " + TOOLS_DIR.toAbsolutePath() + "|@"));
-        System.out.println(AUTO.string("Logs are recorded in:          @|yellow " + LOGS_DIR.toAbsolutePath() + "|@"));
-        System.out.println(
-                AUTO.string("Workspace [Products]:          @|yellow " + PRODUCTS_DIR.toAbsolutePath() + "|@"));
-        System.out.println(
-                AUTO.string("Workspace [Artifacts]:         @|yellow " + ARTIFACTS_DIR.toAbsolutePath() + "|@\n"));
+        status("@|bold,cyan Welcome to JForge V1.0 - Tool Orchestrator.|@");
+        status("Available tools are cached in: @|yellow " + TOOLS_DIR.toAbsolutePath() + "|@");
+        status("Logs are recorded in:          @|yellow " + LOGS_DIR.toAbsolutePath() + "|@");
+        status("Workspace [Products]:          @|yellow " + PRODUCTS_DIR.toAbsolutePath() + "|@");
+        status("Workspace [Artifacts]:         @|yellow " + ARTIFACTS_DIR.toAbsolutePath() + "|@\n");
     }
 
     // ==================== LOGGING ====================
@@ -290,7 +294,7 @@ public class JForgeAgent implements Callable<Integer> {
             if (userPrompt == null || userPrompt.isBlank()
                     || userPrompt.equalsIgnoreCase("exit")
                     || userPrompt.equalsIgnoreCase("quit")) {
-                System.out.println(AUTO.string("@|bold,yellow Shutting down the forge...|@"));
+                status("@|bold,yellow Shutting down the forge...|@");
                 logToFile("[SYSTEM] Shutting down.");
                 break;
             }
@@ -307,8 +311,8 @@ public class JForgeAgent implements Callable<Integer> {
 
         while (!state.taskResolved) {
             if (++state.loopIterations > MAX_LOOP_ITERATIONS) {
-                System.out.println(AUTO.string("@|bold,red [LOOP GUARD] Maximum orchestration iterations reached ("
-                        + MAX_LOOP_ITERATIONS + "). Aborting demand.|@"));
+                status("@|bold,red [LOOP GUARD] Maximum orchestration iterations reached ("
+                        + MAX_LOOP_ITERATIONS + "). Aborting demand.|@");
                 logToFile("[SYSTEM] Loop guard triggered after " + MAX_LOOP_ITERATIONS + " iterations. Last error: "
                         + truncate(state.lastError, 300));
                 break;
@@ -320,15 +324,14 @@ public class JForgeAgent implements Callable<Integer> {
 
             String statePrompt = buildStatePrompt(userPrompt, state, clock, state.cacheList);
 
-            System.out.println(AUTO.string("@|bold,blue [ROUTER] Analyzing Intent and Metadata Schemas...|@"));
+            status("@|bold,blue [ROUTER] Analyzing Intent and Metadata Schemas...|@");
             String routerAction = router.invoke(statePrompt);
             logToFile("[ROUTER ACTION] " + routerAction);
 
             // Empty response means the LLM call failed (timeout, quota, network) — not a
             // hallucination.
             if (routerAction.isBlank()) {
-                System.out.println(AUTO.string(
-                        "@|bold,red [ROUTER] LLM returned empty response (timeout or quota). Aborting demand.|@"));
+                status("@|bold,red [ROUTER] LLM returned empty response (timeout or quota). Aborting demand.|@");
                 logToFile("[ERROR] Router returned empty response — likely timeout or rate limit. Demand aborted.");
                 state.taskResolved = true;
                 continue;
@@ -344,8 +347,7 @@ public class JForgeAgent implements Callable<Integer> {
                 case "CREATE" -> handleCreate(routerAction.substring(colon + 1).trim(), state);
                 case "EXECUTE" -> handleExecute(routerAction, colon, userPrompt, state);
                 default -> {
-                    System.out.println(AUTO.string(
-                            "@|bold,red [ROUTER] Unexpected response format. Halting. Response: |@" + routerAction));
+                    status("@|bold,red [ROUTER] Unexpected response format. Halting. Response: |@" + routerAction);
                     logToFile("[WARN] Unexpected router output (possible hallucination): " + routerAction);
                     state.taskResolved = true;
                 }
@@ -412,11 +414,17 @@ public class JForgeAgent implements Callable<Integer> {
     // ==================== HANDLERS ====================
 
     private void handleDelegateChat(String userPrompt, String clock, LoopState state) {
-        System.out.println(AUTO.string("@|bold,yellow \uD83D\uDCAC [ASSISTANT] Generating intelligent response...|@"));
+        status("@|bold,yellow \uD83D\uDCAC [ASSISTANT] Generating intelligent response...|@");
 
         String chatMessage = assistant
                 .invoke(buildAssistantPrompt(userPrompt, state.ragContext, state.cacheList, clock));
-        System.out.println(AUTO.string("\n@|cyan " + chatMessage + "|@\n"));
+        resultBuffer.setLength(0);
+        resultBuffer.append(chatMessage.strip());
+        if (silent) {
+            System.out.println(chatMessage.strip());
+        } else {
+            System.out.println(AUTO.string("\n@|cyan " + chatMessage + "|@\n"));
+        }
         logToFile("[CHAT RESULT]\n" + chatMessage);
 
         addToMemory("USER: " + userPrompt);
@@ -428,27 +436,26 @@ public class JForgeAgent implements Callable<Integer> {
 
     private void handleSearch(String query, LoopState state) {
         if (++state.searchCount > MAX_SEARCH_PER_DEMAND) {
-            System.out.println(AUTO.string("@|bold,red [SEARCH GUARD] Maximum searches per demand reached ("
-                    + MAX_SEARCH_PER_DEMAND + "). Aborting.|@"));
+            status("@|bold,red [SEARCH GUARD] Maximum searches per demand reached ("
+                    + MAX_SEARCH_PER_DEMAND + "). Aborting.|@");
             logToFile("[SYSTEM] Search guard triggered after " + MAX_SEARCH_PER_DEMAND + " searches. Last query: "
                     + query);
             state.taskResolved = true;
             return;
         }
-        System.out.println(AUTO.string("@|bold,cyan \uD83D\uDD0D [WEB SEARCH] Searching infrastructure: |@" + query));
+        status("@|bold,cyan \uD83D\uDD0D [WEB SEARCH] Searching infrastructure: |@" + query);
         String searchResult = searchWeb(query);
 
         state.ragContext = "Query: " + query + "\nResults:\n" + searchResult;
         addToMemory("SYSTEM (SEARCHED): " + query);
-        System.out.println(
-                AUTO.string("@|bold,yellow \uD83D\uDD04 Reloading Orchestrator with fresh contextual knowledge...|@"));
+        status("@|bold,yellow \uD83D\uDD04 Reloading Orchestrator with fresh contextual knowledge...|@");
 
         boolean failed = searchResult.isBlank() || searchResult.startsWith("[searcher] LLM API call failed");
         logToFile((failed ? "[SEARCH FAILED] " : "[SEARCH OK] ") + query + "\nOutcome: " + searchResult);
     }
 
     private void handleEdit(String editPayload, LoopState state) {
-        System.out.println(AUTO.string("@|bold,magenta [CODER] Modifying existing tool -> |@" + editPayload));
+        status("@|bold,magenta [CODER] Modifying existing tool -> |@" + editPayload);
 
         int firstSpace = editPayload.indexOf(' ');
         String targetTool = firstSpace == -1 ? editPayload : editPayload.substring(0, firstSpace).trim();
@@ -467,8 +474,7 @@ public class JForgeAgent implements Callable<Integer> {
     }
 
     private void handleCreate(String instruction, LoopState state) {
-        System.out.println(AUTO
-                .string("@|bold,magenta [CODER] Tool missing (or corrupted). Developing new Tool -> |@" + instruction));
+        status("@|bold,magenta [CODER] Tool missing (or corrupted). Developing new Tool -> |@" + instruction);
         runCoderPipeline(coder.invoke(buildCoderCreatePrompt(instruction, state.lastError)), state, true);
     }
 
@@ -489,7 +495,7 @@ public class JForgeAgent implements Callable<Integer> {
             logToFile("[ERROR] handleCodeGeneration failed: " + e.getMessage());
             state.lastError = "Code generation I/O failure: " + e.getMessage();
         }
-        System.out.println(AUTO.string("@|bold,yellow Returning control to [ROUTER] to invoke the produced tool...|@"));
+        status("@|bold,yellow Returning control to [ROUTER] to invoke the produced tool...|@");
     }
 
     /**
@@ -501,7 +507,7 @@ public class JForgeAgent implements Callable<Integer> {
         if (skipTest || state.crashRetries > 0)
             return;
 
-        System.out.println(AUTO.string("@|bold,cyan [TESTER] Generating test invocation for: |@" + fileName));
+        status("@|bold,cyan [TESTER] Generating test invocation for: |@" + fileName);
         logToFile("[TESTER] Running auto-test for: " + fileName);
 
         String toolSource;
@@ -545,11 +551,10 @@ public class JForgeAgent implements Callable<Integer> {
 
         logToFile("[TESTER] Test result:\n" + testResult.output());
         if (testResult.success()) {
-            System.out.println(AUTO.string("@|bold,green [TEST PASSED] Tool validated successfully.|@"));
+            status("@|bold,green [TEST PASSED] Tool validated successfully.|@");
             logToFile("[TESTER] Test PASSED for: " + fileName);
         } else {
-            System.out.println(
-                    AUTO.string("@|bold,red [TEST FAILED] Tool failed validation. Routing for auto-heal...|@"));
+            status("@|bold,red [TEST FAILED] Tool failed validation. Routing for auto-heal...|@");
             state.lastError = "[AUTO-TEST FAILED]\n" + testResult.output();
             state.crashRetries++;
             logToFile("[TESTER] Test FAILED for: " + fileName + "\nError: " + testResult.output());
@@ -558,13 +563,13 @@ public class JForgeAgent implements Callable<Integer> {
 
     private void handleExecute(String routerAction, int actionColon, String userPrompt, LoopState state)
             throws IOException, InterruptedException {
-        System.out.println(AUTO.string("@|bold,cyan [EXECUTE] |@" + routerAction));
+        status("@|bold,cyan [EXECUTE] |@" + routerAction);
 
         String[] parts = routerAction.substring(actionColon + 1).trim().split("\\s+");
         String toolName = parts[0];
         if (!isToolNameSafe(toolName)) {
             String msg = "Rejected unsafe tool name from LLM: '" + toolName + "'";
-            System.out.println(AUTO.string("@|bold,red [SECURITY] " + msg + "|@"));
+            status("@|bold,red [SECURITY] " + msg + "|@");
             logToFile("[SECURITY] " + msg);
             state.taskResolved = true;
             return;
@@ -584,18 +589,17 @@ public class JForgeAgent implements Callable<Integer> {
         logToFile("[EXECUTION RESULT]\n" + result.output());
 
         if (result.success()) {
-            System.out.println(AUTO.string("@|bold,green Demand successfully fulfilled via native JBang tool.|@"));
+            status("@|bold,green Demand successfully fulfilled via native JBang tool.|@");
             String outLog = truncate(result.output(), 300);
             addToMemory("USER: " + userPrompt);
             addToMemory("SYSTEM (EXECUTED): " + routerAction + "\nResult Preview: " + outLog.trim());
             state.taskResolved = true;
         } else {
-            System.out.println(AUTO.string(
-                    "@|bold,red Tool Execution Failed. Returning trace to Router for analysis...|@"));
+            status("@|bold,red Tool Execution Failed. Returning trace to Router for analysis...|@");
             state.crashRetries++;
             if (state.crashRetries > 2) {
-                System.out.println(AUTO.string("@|bold,red Maximum retry limit reached (" + state.crashRetries
-                        + "). Architecture failed to heal!|@"));
+                status("@|bold,red Maximum retry limit reached (" + state.crashRetries
+                        + "). Architecture failed to heal!|@");
                 logToFile("[SYSTEM] Auto-heal limits exceeded."
                         + " | Tool: " + toolName
                         + " | Retries: " + state.crashRetries
@@ -638,12 +642,12 @@ public class JForgeAgent implements Callable<Integer> {
 
         Files.writeString(TOOLS_DIR.resolve(fileName), code);
         logToFile("[SYSTEM] Forge saved script: " + fileName);
-        System.out.println(AUTO.string("@|bold,green [Operation Successful] Script saved as: |@" + fileName));
+        status("@|bold,green [Operation Successful] Script saved as: |@" + fileName);
 
         if (!metadataContent.isBlank()) {
             String metaFileName = toMetaName(fileName);
             Files.writeString(TOOLS_DIR.resolve(metaFileName), metadataContent);
-            System.out.println(AUTO.string("@|bold,green [Metadata] Schema generated and attached: |@" + metaFileName));
+            status("@|bold,green [Metadata] Schema generated and attached: |@" + metaFileName);
             logToFile("[SYSTEM] Metadata attached: " + metadataContent);
         }
 
@@ -678,6 +682,14 @@ public class JForgeAgent implements Callable<Integer> {
     }
 
     // ==================== UTILITIES ====================
+
+    /**
+     * Prints a status/decorative message to stdout — silenced when --silent is active.
+     * All noise output (agent names, progress, banners) must go through this method.
+     */
+    private void status(String ansiMessage) {
+        if (!silent) System.out.println(AUTO.string(ansiMessage));
+    }
 
     /**
      * Truncates a string to max chars, appending "..." if cut. Null-safe (returns
@@ -734,7 +746,7 @@ public class JForgeAgent implements Callable<Integer> {
         }) {
             if (c.fail()) {
                 String msg = "Validation failed for '" + fileName + "': " + c.msg() + ".";
-                System.out.println(AUTO.string("@|bold,red [VALIDATION] |@" + msg));
+                status("@|bold,red [VALIDATION] |@" + msg);
                 logToFile("[VALIDATION FAILED] " + msg);
                 throw new IOException(msg);
             }
@@ -787,16 +799,22 @@ public class JForgeAgent implements Callable<Integer> {
             String msg = "[TIMEOUT] Tool '" + toolName + "' exceeded " + MAX_TOOL_TIMEOUT_SECONDS
                     + "s. Process forcibly terminated.";
             logToFile("[TIMEOUT] " + msg);
-            System.out.println(AUTO.string("@|bold,red " + msg + "|@"));
+            status("@|bold,red " + msg + "|@");
             return new ProcessResult(false, msg);
         }
         reader.join();
         String executionOutput = outputRef.get();
         int exitCode = process.exitValue();
 
-        System.out.println("----------------[ RESULT ]----------------");
-        System.out.print(executionOutput);
-        System.out.println("------------------------------------------");
+        resultBuffer.setLength(0);
+        resultBuffer.append(executionOutput.strip());
+        if (silent) {
+            System.out.println(executionOutput.strip());
+        } else {
+            System.out.println("----------------[ RESULT ]----------------");
+            System.out.print(executionOutput);
+            System.out.println("------------------------------------------");
+        }
 
         boolean success = exitCode == 0;
         // Fallback: exitCode 0 mas StackTrace vazou no stdout
@@ -871,9 +889,8 @@ public class JForgeAgent implements Callable<Integer> {
                 try {
                     Files.deleteIfExists(p);
                     Files.deleteIfExists(TOOLS_DIR.resolve(toMetaName(p.getFileName().toString())));
-                    System.out.println(AUTO.string(
-                            "@|bold,red \uD83D\uDDD1 [GARBAGE COLLECTOR] Deleting old unused tool: |@"
-                                    + p.getFileName()));
+                    status("@|bold,red \uD83D\uDDD1 [GARBAGE COLLECTOR] Deleting old unused tool: |@"
+                                    + p.getFileName());
                     logToFile("[GC] Deleted: " + p.getFileName());
                 } catch (IOException e) {
                     logToFile("[ERROR] runGarbageCollector: failed to delete "
@@ -1036,7 +1053,7 @@ public class JForgeAgent implements Callable<Integer> {
             } catch (Exception e) {
                 String msg = "[" + name + "] LLM API call failed: " + e.getMessage();
                 logToFile("[ERROR] " + msg);
-                System.out.println(AUTO.string("@|bold,red [LLM ERROR] " + msg + "|@"));
+                status("@|bold,red [LLM ERROR] " + msg + "|@");
                 return "";
             }
         }

@@ -371,6 +371,7 @@ jbang JForgeAgent.java [OPTIONS]
 | `--max-tools <n>` | `10` | Maximum cached tools before GC count-eviction |
 | `--tool-age-days <n>` | `30` | Days of inactivity before a tool is eligible for deletion |
 | `--prompt <text>` | — | Run a single prompt non-interactively and exit (CI/CD mode) |
+| `--silent` | `false` | Suppress all status/decorative output; print only the final result (for pipe/MCP/A2A use) |
 | `--skip-test` | `false` | Skip the auto-test after CREATE (use for GUI/Swing or hardware-dependent tools) |
 | `-V`, `--version` | — | Print version and exit |
 | `-h`, `--help` | — | Print help and exit |
@@ -416,6 +417,24 @@ When `--prompt` is provided, JForge:
 4. Prints the result and exits with code `0`
 
 > **Note:** If `--prompt` is not set and no interactive terminal is available, JForge exits with an error as before.
+
+### Silent Mode — machine-readable output
+
+Add `--silent` to suppress all status messages, agent names, and decorative output. Only the final result is printed to stdout — no ANSI codes, no brackets, no banners. Ideal for piping output into other tools, MCP integrations, or A2A agents:
+
+```bash
+# Output only the final result — pipe-friendly
+jbang JForgeAgent.java --silent --prompt "What is the current Bitcoin price?"
+
+# Capture the result in a shell variable
+RESULT=$(jbang JForgeAgent.java --silent --prompt "Summarize the latest Java 26 features")
+echo "$RESULT"
+
+# Combine with jq if the tool produces JSON output
+jbang JForgeAgent.java --silent --prompt "Fetch BTCUSDT price as JSON" | jq '.price'
+```
+
+> **Tip:** `--silent` and `--prompt` are designed to work together. Interactive mode ignores `--silent` (there would be nothing left to see).
 
 ---
 
