@@ -1,5 +1,0 @@
-{
-  "name": "CryptoPriceFetcher.java",
-  "description": "Fetches current cryptocurrency price from Binance API. Gracefully handles invalid symbols.",
-  "args": ["Crypto symbol (e.g., BTCUSDT)"]
-}
