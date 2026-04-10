@@ -155,7 +155,7 @@ set GEMINI_API_KEY=your-api-key-here
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/JForgeAgent.git
+git clone https://github.com/gazolla/JForgeAgent.git
 cd JForgeAgent
 
 # Run on Linux / macOS
