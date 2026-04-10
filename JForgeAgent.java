@@ -796,11 +796,12 @@ public class JForgeAgent implements Callable<Integer> {
         } catch (IOException ignored) {
         }
 
-        List<String> procArgs = new ArrayList<>();
-        procArgs.add("jbang");
+        List<String> procArgs = resolveJbangCommand();
         procArgs.add("-Dfile.encoding=UTF-8");
         procArgs.add(toolName); // validated by isToolNameSafe() in handleExecute
         procArgs.addAll(scriptArgs); // script args, no flags JVM/jbang
+
+        logToFile("[EXECUTE] " + procArgs);
 
         Process process = new ProcessBuilder(procArgs)
                 .directory(TOOLS_DIR.toFile())
@@ -847,6 +848,53 @@ public class JForgeAgent implements Callable<Integer> {
         }
 
         return new ProcessResult(success, executionOutput);
+    }
+
+    private List<String> resolveJbangCommand() {
+        boolean windows = isWindowsHost();
+        List<Path> candidates = new ArrayList<>();
+
+        String jbangHome = System.getenv("JBANG_HOME");
+        if (jbangHome != null && !jbangHome.isBlank()) {
+            addJbangCandidates(Path.of(jbangHome, "bin"), windows, candidates);
+        }
+
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv != null && !pathEnv.isBlank()) {
+            for (String entry : pathEnv.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
+                if (entry == null || entry.isBlank()) continue;
+                Path dir = Path.of(entry.trim());
+                addJbangCandidates(dir, windows, candidates);
+            }
+        }
+
+        for (Path candidate : candidates) {
+            if (!Files.isRegularFile(candidate)) continue;
+            if (!Files.isExecutable(candidate) && !candidate.toString().endsWith(".ps1")) continue;
+            String normalized = candidate.toString();
+            if (normalized.toLowerCase().endsWith(".ps1")) {
+                return new ArrayList<>(List.of("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", normalized));
+            }
+            return new ArrayList<>(List.of(normalized));
+        }
+
+        return new ArrayList<>(List.of("jbang"));
+    }
+
+    private static void addJbangCandidates(Path dir, boolean windows, List<Path> candidates) {
+        if (windows) {
+            candidates.add(dir.resolve("jbang.cmd"));
+            candidates.add(dir.resolve("jbang.exe"));
+            candidates.add(dir.resolve("jbang.ps1"));
+            candidates.add(dir.resolve("jbang"));
+            return;
+        }
+        candidates.add(dir.resolve("jbang"));
+    }
+
+    private static boolean isWindowsHost() {
+        String osName = System.getProperty("os.name", "");
+        return osName.toLowerCase(java.util.Locale.ROOT).contains("win");
     }
 
     private List<String> listCachedTools() {
