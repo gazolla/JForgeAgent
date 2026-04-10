@@ -801,7 +801,7 @@ public class JForgeAgent implements Callable<Integer> {
         procArgs.add(toolName); // validated by isToolNameSafe() in handleExecute
         procArgs.addAll(scriptArgs); // script args, no flags JVM/jbang
 
-        System.out.println(AUTO.string("@|faint [EXECUTE] " + procArgs + "|@"));
+        logToFile("[EXECUTE] " + procArgs);
 
         Process process = new ProcessBuilder(procArgs)
                 .directory(TOOLS_DIR.toFile())
@@ -870,6 +870,7 @@ public class JForgeAgent implements Callable<Integer> {
 
         for (Path candidate : candidates) {
             if (!Files.isRegularFile(candidate)) continue;
+            if (!Files.isExecutable(candidate) && !candidate.toString().endsWith(".ps1")) continue;
             String normalized = candidate.toString();
             if (normalized.toLowerCase().endsWith(".ps1")) {
                 return new ArrayList<>(List.of("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", normalized));
