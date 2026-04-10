@@ -1,0 +1,5 @@
+{
+  "name": "WeatherFetcher.java",
+  "description": "Fetches current weather information (temperature, description, wind speed) for a given city using wttr.in",
+  "args": ["city name (e.g. 'London' or 'New York')"]
+}

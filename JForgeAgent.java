@@ -163,10 +163,7 @@ public class JForgeAgent implements Callable<Integer> {
             System.err.println(AUTO.string("@|bold,red \u274C Please set the GEMINI_API_KEY environment variable.|@"));
             return 1;
         }
-        // Required by google-adk InMemoryRunner: reads GOOGLE_API_KEY via
-        // System.getProperty().
-        // The key originates from GEMINI_API_KEY env var; no constructor-based
-        // injection available in google-adk 1.0.0-rc.1.
+        // Required by google-adk
         System.setProperty("GOOGLE_API_KEY", apiKey);
 
         Files.createDirectories(TOOLS_DIR);
@@ -187,7 +184,8 @@ public class JForgeAgent implements Callable<Integer> {
         status("@|faint [LLM] Model: " + defaultModel
                 + " | Agents: router, coder, assistant, searcher, tester|@");
         if (promptFlag != null && !promptFlag.isBlank()) {
-            if (!silent) printWelcome();
+            if (!silent)
+                printWelcome();
             runGarbageCollector();
             logToFile("[USER] " + promptFlag);
             processDemand(promptFlag);
@@ -419,7 +417,8 @@ public class JForgeAgent implements Callable<Integer> {
         String chatMessage = assistant
                 .invoke(buildAssistantPrompt(userPrompt, state.ragContext, state.cacheList, clock));
 
-        // ── GUARDRAIL: if the assistant mentions a real cached tool, redirect to EXECUTE ──
+        // ── GUARDRAIL: if the assistant mentions a real cached tool, redirect to
+        // EXECUTE ──
         java.util.regex.Matcher m = SAFE_TOOL_NAME.matcher(chatMessage);
         while (m.find()) {
             String candidate = m.group();
@@ -519,7 +518,7 @@ public class JForgeAgent implements Callable<Integer> {
     }
 
     /**
-     * Feature 9: Runs a Tester-agent-generated invocation immediately after CREATE.
+     * Runs a Tester-agent-generated invocation immediately after CREATE.
      * On failure sets state.lastError + increments crashRetries for auto-heal via
      * EDIT.
      */
@@ -657,7 +656,7 @@ public class JForgeAgent implements Callable<Integer> {
             throw new IOException("Rejected unsafe file name from LLM: '" + fileName + "'");
         }
 
-        // Feature 8: fast structural validation before writing to disk
+        // fast structural validation before writing to disk
         validateCodeStructure(code, fileName);
 
         Files.writeString(TOOLS_DIR.resolve(fileName), code);
@@ -671,7 +670,7 @@ public class JForgeAgent implements Callable<Integer> {
             logToFile("[SYSTEM] Metadata attached: " + metadataContent);
         }
 
-        return fileName; // Feature 9: caller needs this to invoke handleTest()
+        return fileName; // caller needs this to invoke handleTest()
     }
 
     // ==================== AGENTS PROMPT BUILDERS ====================
@@ -704,11 +703,14 @@ public class JForgeAgent implements Callable<Integer> {
     // ==================== UTILITIES ====================
 
     /**
-     * Prints a status/decorative message to stdout — silenced when --silent is active.
-     * All noise output (agent names, progress, banners) must go through this method.
+     * Prints a status/decorative message to stdout — silenced when --silent is
+     * active.
+     * All noise output (agent names, progress, banners) must go through this
+     * method.
      */
     private void status(String ansiMessage) {
-        if (!silent) System.out.println(AUTO.string(ansiMessage));
+        if (!silent)
+            System.out.println(AUTO.string(ansiMessage));
     }
 
     /**
@@ -746,7 +748,7 @@ public class JForgeAgent implements Callable<Integer> {
     }
 
     /**
-     * Feature 8: fast structural checks on LLM-generated code before writing to
+     * fast structural checks on LLM-generated code before writing to
      * disk.
      * Catches blank body, missing //DEPS, missing class/main, and leaked markdown
      * fences.
@@ -797,8 +799,8 @@ public class JForgeAgent implements Callable<Integer> {
         List<String> procArgs = new ArrayList<>();
         procArgs.add("jbang");
         procArgs.add("-Dfile.encoding=UTF-8");
-        procArgs.add(toolName); // validado por isToolNameSafe() em handleExecute
-        procArgs.addAll(scriptArgs); // argumentos do script, sem flags JVM/jbang
+        procArgs.add(toolName); // validated by isToolNameSafe() in handleExecute
+        procArgs.addAll(scriptArgs); // script args, no flags JVM/jbang
 
         Process process = new ProcessBuilder(procArgs)
                 .directory(TOOLS_DIR.toFile())
@@ -910,7 +912,7 @@ public class JForgeAgent implements Callable<Integer> {
                     Files.deleteIfExists(p);
                     Files.deleteIfExists(TOOLS_DIR.resolve(toMetaName(p.getFileName().toString())));
                     status("@|bold,red \uD83D\uDDD1 [GARBAGE COLLECTOR] Deleting old unused tool: |@"
-                                    + p.getFileName());
+                            + p.getFileName());
                     logToFile("[GC] Deleted: " + p.getFileName());
                 } catch (IOException e) {
                     logToFile("[ERROR] runGarbageCollector: failed to delete "
@@ -923,10 +925,7 @@ public class JForgeAgent implements Callable<Integer> {
     }
 
     private String searchWeb(String query) {
-        // Delegates to the searcher agent which holds a GoogleSearchTool — official
-        // Google Search grounding,
-        // no HTML scraping, no CAPTCHA risk. The invoke() timeout (60 s) is inherited
-        // from Agent.invoke().
+        // Delegates to the searcher agent which holds a GoogleSearchTool
         return searcher.invoke(query);
     }
 

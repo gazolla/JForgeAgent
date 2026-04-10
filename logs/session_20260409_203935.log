@@ -1,0 +1,7 @@
+==== JForgeAgent Orchestration Lifecycle Started ====
+[MEMORY] Loaded 20 entries from persistent memory.
+[USER] Whats the price of BTC?
+[ROUTER ACTION] EXECUTE: CryptoPriceFetcher.java BTCUSDT
+[EXECUTION RESULT]
+The current price of BTCUSDT is: 71800.00000000
+
