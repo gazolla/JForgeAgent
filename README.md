@@ -474,7 +474,6 @@ jbang JForgeAgent.java [OPTIONS]
 
 | Option | Default | Description |
 |---|---|---|
-| `--model <model>` | — | Override Gemini model for **all** agents (disables per-agent defaults) |
 | `--supervisor-model` | `gemini-2.5-flash` | Model for the Supervisor agent |
 | `--router-model` | `gemini-2.5-flash` | Model for the Router agent |
 | `--coder-model` | `gemini-2.5-flash` | Model for the Coder agent |
@@ -500,9 +499,6 @@ jbang JForgeAgent.java --supervisor-model gemini-2.5-pro --router-model gemini-2
 ```bash
 # Default run — per-agent model assignment is automatic
 jbang JForgeAgent.java
-
-# Force all agents to use the same model (e.g. for testing)
-jbang JForgeAgent.java --model gemini-2.0-flash
 
 # Override only the Coder to a newer model, keep others as default
 jbang JForgeAgent.java --coder-model gemini-2.5-pro

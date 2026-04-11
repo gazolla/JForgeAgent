@@ -70,20 +70,16 @@ public class JForgeAgent implements Callable<Integer> {
     // ==================== CLI OPTIONS ====================
 
     @CommandLine.Option(names = {
-            "--model" }, description = "Override Gemini model for ALL agents (disables per-agent defaults)")
-    private String defaultModel = null;
-
-    @CommandLine.Option(names = {
             "--supervisor-model" }, description = "Model for Supervisor agent (default: gemini-3.1-pro)", defaultValue = "gemini-3.1-pro")
-    private String supervisorModel = "gemini-3.1-pro";
+    private String supervisorModel = "gemini-3-pro-preview";
 
     @CommandLine.Option(names = {
             "--router-model" }, description = "Model for Router agent (default: gemini-3.1-pro)", defaultValue = "gemini-3.1-pro")
-    private String routerModel = "gemini-3.1-pro";
+    private String routerModel = "gemini-3-pro-preview";
 
     @CommandLine.Option(names = {
             "--coder-model" }, description = "Model for Coder agent (default: gemini-3.1-pro)", defaultValue = "gemini-3.1-pro")
-    private String coderModel = "gemini-3.1-pro";
+    private String coderModel = "gemini-3-pro-preview";
 
     @CommandLine.Option(names = {
             "--assistant-model" }, description = "Model for Assistant agent (default: gemini-2.5-flash)", defaultValue = "gemini-2.5-flash")
@@ -221,16 +217,6 @@ public class JForgeAgent implements Callable<Integer> {
         initLogging();
         loadMemory();
 
-        // --model overrides all individual per-agent model options
-        if (defaultModel != null && !defaultModel.isBlank()) {
-            supervisorModel = defaultModel;
-            routerModel = defaultModel;
-            coderModel = defaultModel;
-            assistantModel = defaultModel;
-            searcherModel = defaultModel;
-            testerModel = defaultModel;
-        }
-
         supervisor = new Agent("supervisor", supervisorModel, SUPERVISOR_INSTRUCTION);
         router = new Agent("router", routerModel, ROUTER_INSTRUCTION);
         coder = new Agent("coder", coderModel, CODER_INSTRUCTION);
@@ -238,8 +224,10 @@ public class JForgeAgent implements Callable<Integer> {
         searcher = new Agent("searcher", searcherModel, SEARCHER_INSTRUCTION, new GoogleSearchTool());
         tester = new Agent("tester", testerModel, TESTER_INSTRUCTION);
 
-        status("@|faint [LLM] supervisor [" + supervisorModel + "]  router [" + routerModel + "]  coder [" + coderModel + "]|@");
-        status("@|faint [LLM] assistant  [" + assistantModel + "]  searcher [" + searcherModel + "]  tester [" + testerModel + "]|@");
+        status("@|faint [LLM] supervisor [" + supervisorModel + "]  router [" + routerModel + "]  coder [" + coderModel
+                + "]|@");
+        status("@|faint [LLM] assistant  [" + assistantModel + "]  searcher [" + searcherModel + "]  tester ["
+                + testerModel + "]|@");
         if (promptFlag != null && !promptFlag.isBlank()) {
             if (!silent)
                 printWelcome();
