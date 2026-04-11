@@ -82,16 +82,16 @@ public class JForgeAgent implements Callable<Integer> {
     private String coderModel = "gemini-3-pro-preview";
 
     @CommandLine.Option(names = {"--assistant-model"}, description = "Gemini model for the Assistant agent",
-            defaultValue = "gemini-2.5-flash", showDefaultValue = CommandLine.Help.Visibility.ALWAYS)
-    private String assistantModel = "gemini-2.5-flash";
+            defaultValue = "gemini-3.1-flash-lite-preview", showDefaultValue = CommandLine.Help.Visibility.ALWAYS)
+    private String assistantModel = "gemini-3.1-flash-lite-preview";
 
     @CommandLine.Option(names = {"--searcher-model"}, description = "Gemini model for the Searcher agent",
-            defaultValue = "gemini-2.5-flash", showDefaultValue = CommandLine.Help.Visibility.ALWAYS)
-    private String searcherModel = "gemini-2.5-flash";
+            defaultValue = "gemini-3.1-flash-lite-preview", showDefaultValue = CommandLine.Help.Visibility.ALWAYS)
+    private String searcherModel = "gemini-3.1-flash-lite-preview";
 
     @CommandLine.Option(names = {"--tester-model"}, description = "Gemini model for the Tester agent",
-            defaultValue = "gemini-2.5-flash", showDefaultValue = CommandLine.Help.Visibility.ALWAYS)
-    private String testerModel = "gemini-2.5-flash";
+            defaultValue = "gemini-3.1-flash-lite-preview", showDefaultValue = CommandLine.Help.Visibility.ALWAYS)
+    private String testerModel = "gemini-3.1-flash-lite-preview";
 
     @CommandLine.Option(names = {
             "--max-tools" }, description = "Maximum number of cached tools before GC eviction (default: 10)", defaultValue = "10")
