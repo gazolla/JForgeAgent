@@ -1290,6 +1290,17 @@ public class JForgeAgent implements Callable<Integer> {
             — Contains the answer  (e.g. "Donald Trump is president since Jan 2025") → DELEGATE_CHAT
             — Only points to sites (e.g. "track the ISS at isstracker.com")           → CREATE
 
+            REUSE OVER RECREATE: Before issuing CREATE, scan [Cached Tools] for a tool that uses the same
+            API or produces the same type of output. If such a tool exists and accepts arguments, issue
+            EXECUTE with the new arguments instead of creating a new tool.
+            Example: if WeatherFetcher.java exists and accepts a city name, run it for the new city — do NOT
+            create RioWeatherFetcher.java, SaoPauloWeatherFetcher.java, etc.
+
+            GENERIC BY DEFAULT: When issuing CREATE, always instruct the Coder to build a parameterized tool
+            that accepts the varying input as runtime arguments (args[0], args[1], ...).
+            Never ask the Coder to hardcode specific values (city names, coordinates, amounts, symbols, dates)
+            — those must be passed as arguments at execution time.
+
             YOUR RESPONSE MUST BE EXACTLY ONE OF: 'EXECUTE: ...', 'CREATE: ...', 'EDIT: ...', 'SEARCH: ...' or 'DELEGATE_CHAT'.
             """;
 
@@ -1313,6 +1324,11 @@ public class JForgeAgent implements Callable<Integer> {
             All generated scripts MUST be robust and extract input variables dynamically from the 'args' array.
             DO NOT WRITE MARKDOWN (such as ```java). RETURN EXECUTABLE TEXT AND STRICT METADATA BLOCK ONLY.
             CRITICAL ERROR HANDLING: Do not swallow exceptions in empty try-catch blocks. If a fatal failure occurs (e.g. network error, bad API), the script MUST crash explicitly or call System.exit(1) so the orchestrator can detect the failure.
+            GENERIC AND REUSABLE: Never hardcode values that may vary between invocations (city names,
+            coordinates, amounts, currency symbols, dates, file names). Always accept them as args[0], args[1], etc.
+            A tool must produce correct results for any valid input of the same type, not just the one from
+            the original request. The tool name must reflect its generic purpose (e.g. WeatherFetcher.java,
+            not RioWeatherFetcher.java).
             """;
 
     private static final String ASSISTANT_INSTRUCTION = """
@@ -1378,6 +1394,8 @@ public class JForgeAgent implements Callable<Integer> {
             - Use <<stepId>> in a goal to chain the output of a previous step
             - For simple questions or single-tool requests, produce exactly ONE step
             - For complex workflows, decompose into the minimum number of steps needed
+            - NEVER create separate steps for "create a tool" and "execute the tool" — the Router
+              always creates AND executes in a single step. One deliverable = one step.
 
             EXAMPLE 1 — Simple question (single step, Router uses the Assistant):
             Goal: "Who is the current president of the USA?"
@@ -1406,10 +1424,8 @@ public class JForgeAgent implements Callable<Integer> {
             {"goal":"Crypto ROI analysis and PDF report","steps":[
               {"id":"s1","goal":"Search for current prices of BTC, ETH and SOL in USD","dependsOn":[]},
               {"id":"s2","goal":"Search for prices of BTC, ETH and SOL 30 days ago in USD","dependsOn":[]},
-              {"id":"s3","goal":"Create a tool that calculates the ROI for a R$1000 investment in each crypto using: current=<<s1>> | past=<<s2>>","dependsOn":["s1","s2"]},
-              {"id":"s4","goal":"Execute the ROI calculator tool","dependsOn":["s3"]},
-              {"id":"s5","goal":"Create a tool that generates a PDF report with the ROI ranking from: <<s4>>","dependsOn":["s4"]},
-              {"id":"s6","goal":"Execute the PDF generator tool and save the report to products/","dependsOn":["s5"]}
+              {"id":"s3","goal":"Fetch and display the ROI for a R$1000 investment in each crypto (current=<<s1>> | past=<<s2>>)","dependsOn":["s1","s2"]},
+              {"id":"s4","goal":"Generate a PDF report with the ROI ranking from: <<s3>> and save to products/","dependsOn":["s3"]}
             ]}
             """;
 
