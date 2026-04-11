@@ -70,27 +70,27 @@ public class JForgeAgent implements Callable<Integer> {
     // ==================== CLI OPTIONS ====================
 
     @CommandLine.Option(names = {
-            "--supervisor-model" }, description = "Model for Supervisor agent (default: gemini-3.1-pro)", defaultValue = "gemini-3.1-pro")
+            "--supervisor-model" }, description = "Model for Supervisor agent (default: ${DEFAULT-VALUE})", defaultValue = "gemini-3.1-pro")
     private String supervisorModel = "gemini-3.1-pro";
 
     @CommandLine.Option(names = {
-            "--router-model" }, description = "Model for Router agent (default: gemini-3.1-pro)", defaultValue = "gemini-3.1-pro")
+            "--router-model" }, description = "Model for Router agent (default: ${DEFAULT-VALUE})", defaultValue = "gemini-3.1-pro")
     private String routerModel = "gemini-3.1-pro";
 
     @CommandLine.Option(names = {
-            "--coder-model" }, description = "Model for Coder agent (default: gemini-3.1-pro)", defaultValue = "gemini-3.1-pro")
+            "--coder-model" }, description = "Model for Coder agent (default: ${DEFAULT-VALUE})", defaultValue = "gemini-3.1-pro")
     private String coderModel = "gemini-3.1-pro";
 
     @CommandLine.Option(names = {
-            "--assistant-model" }, description = "Model for Assistant agent (default: gemini-2.5-flash)", defaultValue = "gemini-2.5-flash")
+            "--assistant-model" }, description = "Model for Assistant agent (default: ${DEFAULT-VALUE})", defaultValue = "gemini-2.5-flash")
     private String assistantModel = "gemini-2.5-flash";
 
     @CommandLine.Option(names = {
-            "--searcher-model" }, description = "Model for Searcher agent (default: gemini-2.5-flash)", defaultValue = "gemini-2.5-flash")
+            "--searcher-model" }, description = "Model for Searcher agent (default: ${DEFAULT-VALUE})", defaultValue = "gemini-2.5-flash")
     private String searcherModel = "gemini-2.5-flash";
 
     @CommandLine.Option(names = {
-            "--tester-model" }, description = "Model for Tester agent (default: gemini-2.5-flash)", defaultValue = "gemini-2.5-flash")
+            "--tester-model" }, description = "Model for Tester agent (default: ${DEFAULT-VALUE})", defaultValue = "gemini-2.5-flash")
     private String testerModel = "gemini-2.5-flash";
 
     @CommandLine.Option(names = {
