@@ -1045,8 +1045,10 @@ public class JForgeAgent implements Callable<Integer> {
 
     /**
      * Tokenizes a command string respecting double-quoted groups.
-     * Quotes are stripped from the returned tokens.
+     * Quotes are stripped; escape sequences inside quotes are resolved:
+     *   \n → newline,  \t → tab,  \\ → backslash
      * Example: WeatherFetcher.java "Rio de Janeiro" → ["WeatherFetcher.java", "Rio de Janeiro"]
+     * Example: PdfGenerator.java "Line1\nLine2" /path → ["PdfGenerator.java", "Line1\nLine2", "/path"]
      */
     private static List<String> tokenizeArgs(String input) {
         List<String> tokens = new ArrayList<>();
@@ -1054,7 +1056,15 @@ public class JForgeAgent implements Callable<Integer> {
         boolean inQuotes = false;
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            if (c == '"') {
+            if (c == '\\' && inQuotes && i + 1 < input.length()) {
+                char next = input.charAt(i + 1);
+                switch (next) {
+                    case 'n'  -> { current.append('\n'); i++; }
+                    case 't'  -> { current.append('\t'); i++; }
+                    case '\\' -> { current.append('\\'); i++; }
+                    default   -> current.append(c);
+                }
+            } else if (c == '"') {
                 inQuotes = !inQuotes;
             } else if (c == ' ' && !inQuotes) {
                 if (!current.isEmpty()) {
@@ -1374,6 +1384,9 @@ public class JForgeAgent implements Callable<Integer> {
             that accepts the varying input as runtime arguments (args[0], args[1], ...).
             Never ask the Coder to hardcode specific values (city names, coordinates, amounts, symbols, dates)
             — those must be passed as arguments at execution time.
+
+            NEVER use DELEGATE_CHAT after creating or testing a tool. A tool that was just created
+            must be immediately EXECUTEd with the user's actual arguments — not described to the user.
 
             YOUR RESPONSE MUST BE EXACTLY ONE OF: 'EXECUTE: ...', 'CREATE: ...', 'EDIT: ...', 'SEARCH: ...' or 'DELEGATE_CHAT'.
             """;
