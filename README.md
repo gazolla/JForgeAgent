@@ -45,8 +45,9 @@ JForge is a **two-layer orchestration engine**: a **Supervisor** decomposes your
 graph TD
     User([User Prompt]) --> Supervisor{Supervisor Agent}
 
-    Supervisor -- "WorkflowPlan\n(1 step)" --> Exec1[WorkflowExecutor\nSingle Step]
-    Supervisor -- "WorkflowPlan\n(multi-step)" --> ExecN[WorkflowExecutor\nParallel Layers]
+    Supervisor -- "SIMPLE bypass\n(no plan needed)" --> Router
+    Supervisor -- "WORKFLOW\n(1 step)" --> Exec1[WorkflowExecutor\nSingle Step]
+    Supervisor -- "WORKFLOW\n(multi-step)" --> ExecN[WorkflowExecutor\nParallel Layers]
 
     Exec1 --> Router
     ExecN --> Router
@@ -210,16 +211,26 @@ Layer 2 — ROUTER:      How to achieve each step? (search, create, execute, cha
 
 This separation means the Supervisor never needs to know about APIs, tools, or code — it only plans the workflow. The Router never needs to know about the big picture — it handles one sub-goal at a time with full intelligence.
 
-For simple requests (a single question or a single tool), the Supervisor generates a one-step plan and the Router handles it exactly as before. For complex tasks, the Supervisor generates a multi-step plan with dependencies and the WorkflowExecutor runs each step through the Router.
+The Supervisor classifies every request as **SIMPLE** or **WORKFLOW** before doing anything:
+
+- **SIMPLE** — conversational questions, single known-tool calls, or follow-ups reusing a cached tool. The Supervisor returns `{"type":"SIMPLE"}` and the request goes directly to the Router — no plan, no file I/O, one fewer LLM call.
+- **WORKFLOW** — requests that need a new tool created, result chaining between steps, parallel execution, or file generation. The Supervisor returns a full `WorkflowPlan` and the WorkflowExecutor runs it.
 
 ---
 
 ### Supervisor Agent
 
-The Supervisor receives your goal and the list of currently cached tools, then returns a **WorkflowPlan** in JSON:
+The Supervisor receives your goal and the list of currently cached tools, then returns one of two JSON responses:
 
+**SIMPLE bypass** — no plan needed:
+```json
+{"type": "SIMPLE"}
+```
+
+**WORKFLOW plan** — full decomposition with dependencies:
 ```json
 {
+  "type": "WORKFLOW",
   "goal": "Get weather for Southeast Brazilian cities and create a PDF summary",
   "steps": [
     { "id": "s1", "goal": "Get weather for Rio de Janeiro",    "dependsOn": [] },
@@ -240,7 +251,7 @@ The Supervisor receives your goal and the list of currently cached tools, then r
 - Whether to SEARCH, CREATE, EXECUTE, or DELEGATE_CHAT — that is the Router's job
 - Which tool to use — the Router decides from the cache
 
-The plan is saved to `logs/workflow_<timestamp>.json` for auditing. If a step fails and the Supervisor is asked to replan, each revised version is saved as `logs/workflow_<timestamp>_replan1.json`, etc.
+WORKFLOW plans are saved to `workflows/workflow_<timestamp>.json` for auditing and pattern reuse. SIMPLE requests are not saved — they leave no file on disk. If a step fails and the Supervisor is asked to replan, each revised version is saved to `logs/` as `workflow_<timestamp>_replan1.json`, etc.
 
 **Fallback:** If the Supervisor fails to produce a valid plan (LLM error or malformed JSON), JForge falls back automatically to the direct Router loop — no interruption for the user.
 
@@ -291,7 +302,10 @@ Each agent is a stateless `InMemoryRunner` wrapping a `LlmAgent` backed by Googl
 
 #### Supervisor Agent — *The Planner*
 
-Receives the user goal and the cached tool list. Returns a `WorkflowPlan` JSON defining sub-goals and their dependencies. Knows when a single step suffices (simple question, single tool) and when a multi-step workflow is needed (parallel data fetching, create then run, summarize multiple results).
+Receives the user goal and the cached tool list. Classifies the request as **SIMPLE** or **WORKFLOW**:
+
+- **SIMPLE** → returns `{"type":"SIMPLE"}` and the Router is invoked directly. No plan is created, no file is saved — zero overhead for trivial requests.
+- **WORKFLOW** → returns a full `WorkflowPlan` JSON defining sub-goals, dependencies, and parallel layers. Used when a new tool must be created, results need to be chained between steps, or a final file (PDF, CSV) must be generated.
 
 Does **not** decide implementation details — that is the Router's domain.
 
@@ -535,8 +549,8 @@ When `--prompt` is provided, JForge:
 
 1. Initializes all six agents normally
 2. Loads persistent memory from previous sessions
-3. Runs the Supervisor to generate a WorkflowPlan
-4. Executes the plan through the WorkflowExecutor + Router loops
+3. Runs the Supervisor — returns `SIMPLE` (routes directly to Router) or a `WorkflowPlan` (runs through WorkflowExecutor)
+4. Executes each step through the Router loop
 5. Prints the result and exits with code `0`
 
 ### Silent Mode — machine-readable output
@@ -562,19 +576,19 @@ Once running, just type your request at the prompt. The Supervisor handles plann
 
 ### Simple Questions & Live Data
 
-For single-step tasks, the Supervisor generates one step and the Router handles it entirely.
+For conversational or single-step tasks, the Supervisor returns `{"type":"SIMPLE"}` and the Router is invoked directly — no plan, no file write.
 
 ```
 What is the current price of Bitcoin in USD?
 ```
 
-> Supervisor → 1 step → Router → `SEARCH` → `DELEGATE_CHAT` with RAG context
+> Supervisor → **SIMPLE bypass** → Router → `SEARCH` → `DELEGATE_CHAT` with RAG context
 
 ```
 Who won the last FIFA World Cup and what was the final score?
 ```
 
-> Supervisor → 1 step → Router → `SEARCH` → `DELEGATE_CHAT`
+> Supervisor → **SIMPLE bypass** → Router → `SEARCH` → `DELEGATE_CHAT`
 
 ---
 
@@ -669,14 +683,14 @@ The currency converter only does one conversion. Make it accept a list of target
 
 ### Reusing Cached Tools
 
-After a tool is built, the Supervisor sees it in the cache and generates steps that target it directly. The Router chooses `EXECUTE` without rebuilding.
+After a tool is built, the Supervisor sees it in the cache. For a single-city follow-up it returns **SIMPLE**, routing directly to the Router which reads the cache and executes.
 
 ```
 # After building WeatherTool.java:
 What's the weather in Tokyo?
 ```
 
-> Supervisor → 1 step → Router reads cache → `EXECUTE: WeatherTool.java "Tokyo"`
+> Supervisor → **SIMPLE bypass** → Router reads cache → `EXECUTE: WeatherTool.java "Tokyo"`
 
 ```
 # Multi-city request with existing tool:
@@ -724,14 +738,15 @@ Tool Execution Failed. Returning trace to Router for analysis...
 
 ### Workflow Audit
 
-Every plan generated by the Supervisor is saved in `logs/`:
+SIMPLE requests leave no file on disk. WORKFLOW plans are saved to `workflows/` on success (and read back by the Supervisor for pattern reuse):
 
 ```bash
-cat logs/workflow_20260410_143022.json
+cat workflows/workflow_20260410_143022.json
 ```
 
 ```json
 {
+  "type": "WORKFLOW",
   "goal": "Get weather for Southeast Brazilian cities and create PDF",
   "steps": [
     {"id":"s1","goal":"Get weather for Rio de Janeiro","dependsOn":[]},
@@ -742,7 +757,7 @@ cat logs/workflow_20260410_143022.json
 }
 ```
 
-If replanning occurred, each revised plan is saved with a `_replan1`, `_replan2` suffix alongside the session log.
+If replanning occurred, each revised plan is saved to `logs/` with a `_replan1`, `_replan2` suffix alongside the session log.
 
 ---
 
@@ -753,6 +768,7 @@ If replanning occurred, each revised plan is saved with a `_replan1`, `_replan2`
 | `Please set the GEMINI_API_KEY` | API key not set | Export `GEMINI_API_KEY` in your shell profile and restart the terminal |
 | `Interactive console is not supported` | Running inside an IDE terminal or piped input | Run in a real terminal (Windows Terminal, iTerm2, Bash) |
 | `[LLM ERROR] Context variable not found` | Template variable in agent instruction | Fixed in current version — update to latest |
+| `[SUPERVISOR] Simple request — bypassing plan, routing directly` | Supervisor classified the request as SIMPLE (no plan needed) | Normal — one fewer LLM call; the Router handles it directly |
 | `[SUPERVISOR] No valid plan produced — falling back to Router mode` | Supervisor LLM error or malformed JSON response | Automatic fallback; if persistent, try rephrasing the prompt |
 | `[TIMEOUT] Tool exceeded 120s` | Tool has an infinite loop or blocking network call | Ask JForge: *"Edit the tool to add a 10-second HTTP timeout"* |
 | `[LLM ERROR] LLM API call failed` | Network issue or Gemini quota exceeded | Check your internet and quota at [Google AI Studio](https://aistudio.google.com) |
