@@ -1,0 +1,5 @@
+{
+  "id": "supervisor-plugin",
+  "subscribes": ["chat.prompt", "supervisor.request", "memory.result"],
+  "publishes":  ["supervisor.response", "memory.read"]
+}

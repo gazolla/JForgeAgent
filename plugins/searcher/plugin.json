@@ -1,0 +1,5 @@
+{
+  "id": "searcher-plugin",
+  "subscribes": ["search.request"],
+  "publishes":  ["search.result"]
+}

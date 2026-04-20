@@ -1,0 +1,5 @@
+{
+  "id": "assistant-plugin",
+  "subscribes": ["assistant.request"],
+  "publishes":  ["assistant.response"]
+}

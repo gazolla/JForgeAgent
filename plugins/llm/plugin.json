@@ -1,5 +1,5 @@
 {
   "id": "llm-plugin",
-  "subscribes": ["chat.prompt", "llm.invoke"],
-  "publishes":  ["chat.response", "llm.result"]
+  "subscribes": ["llm.invoke"],
+  "publishes":  ["llm.result"]
 }

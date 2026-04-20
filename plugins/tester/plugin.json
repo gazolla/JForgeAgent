@@ -1,0 +1,5 @@
+{
+  "id": "tester-plugin",
+  "subscribes": ["tester.request"],
+  "publishes":  ["tester.result"]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "orchestrator-plugin",
+  "subscribes": [
+    "supervisor.response",
+    "router.response",
+    "coder.result",
+    "tester.result",
+    "search.result",
+    "assistant.response",
+    "tool.result",
+    "memory.result"
+  ],
+  "publishes": [
+    "supervisor.request",
+    "router.request",
+    "coder.request",
+    "tester.request",
+    "search.request",
+    "assistant.request",
+    "tool.invoke",
+    "chat.response",
+    "memory.write",
+    "artifact.gc",
+    "workflow.saved"
+  ]
+}

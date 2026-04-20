@@ -1,0 +1,5 @@
+{
+  "id": "coder-plugin",
+  "subscribes": ["coder.request"],
+  "publishes":  ["coder.result"]
+}

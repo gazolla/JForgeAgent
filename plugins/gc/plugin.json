@@ -1,0 +1,5 @@
+{
+  "id": "gc-plugin",
+  "subscribes": ["artifact.gc"],
+  "publishes":  []
+}
