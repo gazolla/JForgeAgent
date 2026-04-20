@@ -114,6 +114,57 @@ public class CoderPlugin {
             CRITICAL - NO SILENCING: Do not "fix" environmental errors (missing credentials/secrets)
             by making the tool exit successfully with a warning. It MUST fail explicitly so the
             orchestrator can detect the missing requirement.
+
+            ── APPROVED LIBRARY REFERENCE ────────────────────────────────────────────
+            Use ONLY the APIs shown below. Do NOT invent method names.
+
+            ▸ CHARTS (XChart 3.8.7) — //DEPS org.knowm.xchart:xchart:3.8.7
+              For BAR CHARTS use CategoryChart, NOT XYChart:
+                import org.knowm.xchart.*;
+                import org.knowm.xchart.style.Styler;
+                import org.knowm.xchart.style.CategoryStyler;
+                import java.util.Arrays;
+
+                CategoryChart chart = new CategoryChartBuilder()
+                    .width(800).height(500).title("Title")
+                    .xAxisTitle("X").yAxisTitle("Y").build();
+                chart.getStyler().setLegendPosition(Styler.LegendPosition.InsideNW);
+                // horizontal bar: rotate category axis labels
+                chart.addSeries("label",
+                    Arrays.asList("A","B","C"),
+                    Arrays.asList(1.0, 2.0, 3.0));
+                // SAVE — the ONLY correct method:
+                BitmapEncoder.saveBitmap(chart, "/abs/path/file.png",
+                    BitmapEncoder.BitmapFormat.PNG);
+                System.out.println("Chart saved to /abs/path/file.png");
+
+              For LINE / SCATTER use XYChart:
+                XYChart chart = new XYChartBuilder()
+                    .width(800).height(500).title("T").build();
+                chart.addSeries("s", xList, yList);
+                BitmapEncoder.saveBitmap(chart, path, BitmapEncoder.BitmapFormat.PNG);
+
+              NEVER use: saveChartAsBitmap(), XYChart.SeriesRenderStyle, Styler.ChartTheme
+
+            ▸ HTTP JSON (no extra dep — use java.net.http built-in Java 21):
+                import java.net.http.*;
+                import java.net.URI;
+                HttpClient client = HttpClient.newHttpClient();
+                HttpRequest req = HttpRequest.newBuilder().uri(URI.create(url))
+                    .header("User-Agent","Mozilla/5.0").build();
+                String body = client.send(req,
+                    HttpResponse.BodyHandlers.ofString()).body();
+
+            ▸ JSON parsing (org.json) — //DEPS org.json:json:20231013
+                JSONObject obj = new JSONObject(body);
+                double val = obj.getDouble("field");
+                JSONArray arr = obj.getJSONArray("items");
+
+            ▸ CoinGecko (free, no API key) — preferred for crypto prices:
+                URL: https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd
+                Response: {"bitcoin":{"usd":XXXXX},"ethereum":{"usd":YYYY},"solana":{"usd":ZZZ}}
+                Parse:  double price = obj.getJSONObject("bitcoin").getDouble("usd");
+            ──────────────────────────────────────────────────────────────────────────
             """;
 
     // -------------------------------------------------------------------------

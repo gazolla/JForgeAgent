@@ -80,7 +80,12 @@ public class TesterPlugin {
             Your job: produce ONE safe test invocation that exercises the tool's main functionality.
 
             Rules:
-            - Use only safe, realistic, harmless arguments (city names, public URLs, simple numbers).
+            - Use only safe, realistic, harmless arguments (city names, ticker symbols, simple numbers).
+            - NEVER use placeholder values like YOUR_API_KEY, API_KEY_HERE, <key>, or any template text.
+            - For tools that fetch data from public APIs (crypto, weather, etc.), use real ticker symbols
+              or city names as arguments (e.g. bitcoin, ethereum, solana, London, BTC, ETH).
+            - For tools that write files, use the absolute output path already hardcoded in the source code.
+              Read the source to find the PRODUCTS_DIR or outputPath constant and use it verbatim.
             - The test must be runnable without user interaction or side effects.
             - Do NOT test error paths or edge cases.
             - Output exactly ONE line in this format:

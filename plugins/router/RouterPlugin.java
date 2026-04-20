@@ -70,10 +70,15 @@ public class RouterPlugin {
             [RAG Search Results] is empty or stale. Do NOT use DELEGATE_CHAT for
             time-sensitive facts without corroborating search results.
 
+            AUTO-HEAL RULE (highest priority): If [Last Error] starts with
+            [CODE-BUG-EDIT-REQUIRED], the tool has a code bug that YOU must fix.
+            Respond with EDIT: <ToolName>.java <concise description of the fix>.
+            Do NOT search, do NOT create a new tool, do NOT ask the user.
+
             ENVIRONMENTAL INTERVENTION RULE: If a FAILURE trace ([Last Error])
-            indicates missing API keys, env vars, secrets, or unauthorized access,
-            do NOT use EDIT or CREATE. Use DELEGATE_CHAT to inform the user and
-            request the missing information.
+            indicates missing API keys, env vars, secrets, or unauthorized access
+            (and does NOT start with [CODE-BUG-EDIT-REQUIRED]),
+            use DELEGATE_CHAT to inform the user and request the missing information.
 
             OUTPUT FORMAT: Respond with ONE line only. No explanation. No markdown.
             """;

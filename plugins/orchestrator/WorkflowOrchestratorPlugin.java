@@ -446,9 +446,14 @@ public class WorkflowOrchestratorPlugin {
     private static void handleCreate(String instruction, StepState state,
             String workflowId, Event origin) throws Exception {
 
+        // Pre-search: enrich instruction with real API docs for known library tasks
+        String docs = searchForDocs(instruction, workflowId);
+        String enrichedInstruction = docs.isBlank() ? instruction
+                : instruction + "\n\n[API DOCUMENTATION — use these exact APIs]\n" + docs;
+
         Map<String, Object> req = new LinkedHashMap<>();
         req.put("mode",        "CREATE");
-        req.put("instruction", instruction);
+        req.put("instruction", enrichedInstruction);
         req.put("lastError",   state.lastError == null ? "" : state.lastError);
 
         String corrId = UUID.randomUUID().toString();
@@ -474,11 +479,18 @@ public class WorkflowOrchestratorPlugin {
         String metadataContent = result.path("metadataContent").asText("");
         state.cachedTools = null; // invalidate cache after new tool
 
-        // Auto-test (skip if already failing — auto-heal path)
+        // Auto-test: only on first attempt (crashRetries == 0).
+        // On subsequent attempts (auto-heal path) we trust the coder fixed the issue.
+        int retriesBefore = state.crashRetries;
         if (state.crashRetries == 0) {
             handleTest(fileName, metadataContent, state, workflowId);
         }
-        state.lastError = null; // clear after successful coder pass
+
+        // Only clear lastError if the test passed (crashRetries did NOT increase).
+        // If the test failed, preserve lastError so the Router can decide EDIT.
+        if (state.crashRetries == retriesBefore) {
+            state.lastError = null;
+        }
     }
 
     // --- EDIT ----------------------------------------------------------------
@@ -498,11 +510,22 @@ public class WorkflowOrchestratorPlugin {
             System.err.println("[ORCHESTRATOR] Cannot read tool for EDIT: " + targetTool);
         }
 
+        // If the error is a compile failure, pre-search for correct API docs
+        // so the Coder can fix the wrong method/class names with real references.
+        String lastErr = state.lastError == null ? "" : state.lastError;
+        boolean isCompileError = lastErr.contains("cannot find symbol")
+                || lastErr.contains("incompatible types")
+                || lastErr.contains("error: cannot")
+                || lastErr.contains("[jbang] [ERROR] Error during compile");
+        String docs = isCompileError ? searchForDocs(existingCode + " " + changes, workflowId) : "";
+        String enrichedChanges = docs.isBlank() ? changes
+                : changes + "\n\n[API DOCUMENTATION — use these exact APIs]\n" + docs;
+
         Map<String, Object> req = new LinkedHashMap<>();
         req.put("mode",         "EDIT");
-        req.put("instruction",  changes);
+        req.put("instruction",  enrichedChanges);
         req.put("existingCode", existingCode);
-        req.put("lastError",    state.lastError == null ? "" : state.lastError);
+        req.put("lastError",    lastErr);
 
         String corrId = UUID.randomUUID().toString();
         CompletableFuture<Event> future = new CompletableFuture<>();
@@ -522,8 +545,15 @@ public class WorkflowOrchestratorPlugin {
             state.lastError = result.path("error").asText("Unknown coder error on EDIT.");
             return;
         }
-        state.cachedTools = null;
+        // Extract file name from coder result for the EXECUTE directive
+        String editedFile = result.path("fileName").asText(targetTool);
+        state.cachedTools = null; // force refresh so router sees the updated tool
         state.lastError   = null;
+        // Directive: tool was fixed — next action must be EXECUTE, not CREATE again
+        state.ragContext = (state.ragContext == null ? "" : state.ragContext)
+                + "\n[DIRECTIVE: Tool '" + editedFile + "' was just EDITED and fixed. "
+                + "Your NEXT action MUST be EXECUTE: " + editedFile + " <args>. "
+                + "Do NOT use CREATE or EDIT again.]";
     }
 
     // --- TEST (after CREATE) ------------------------------------------------
@@ -565,7 +595,9 @@ public class WorkflowOrchestratorPlugin {
             System.out.println("[ORCHESTRATOR] Test PASSED: " + fileName);
         } else {
             System.err.println("[ORCHESTRATOR] Test FAILED: " + fileName);
-            state.lastError = "[AUTO-TEST FAILED]\n" + output;
+            // Prefix triggers AUTO-HEAL RULE in RouterPlugin (must use EDIT, never DELEGATE_CHAT)
+            state.lastError = "[CODE-BUG-EDIT-REQUIRED] Test failed for " + fileName
+                    + ". Fix the code logic — do NOT search or ask the user.\nOutput:\n" + output;
             state.crashRetries++;
         }
     }
@@ -631,7 +663,9 @@ public class WorkflowOrchestratorPlugin {
             System.out.println("[ORCHESTRATOR] Tool succeeded: " + truncate(output, 100));
         } else {
             state.crashRetries++;
-            state.lastError = output;
+            // Prefix signals Router to EDIT the tool, not search for env vars
+            state.lastError = "[CODE-BUG-EDIT-REQUIRED] Execution of " + toolName
+                    + " crashed. Fix the code — do NOT search or ask the user.\nTrace:\n" + output;
             System.err.println("[ORCHESTRATOR] Tool failed (retry " + state.crashRetries + "): "
                     + truncate(output, 100));
             if (state.crashRetries >= MAX_CRASH_RETRIES) {
@@ -703,6 +737,106 @@ public class WorkflowOrchestratorPlugin {
                 .max().orElse(0);
         levels.put(step.id(), level);
         return level;
+    }
+
+    // =========================================================================
+    // Doc pre-search — enriches CREATE/EDIT with real API documentation
+    // =========================================================================
+
+    /**
+     * Performs a targeted web search for API documentation based on keywords
+     * found in the instruction text. Returns the search report, or "" if no
+     * relevant library is detected or the search times out.
+     */
+    private static String searchForDocs(String text, String workflowId) {
+        String query = buildDocsQuery(text);
+        if (query == null || query.isBlank()) return "";
+        try {
+            String corrId = UUID.randomUUID().toString();
+            CompletableFuture<Event> future = new CompletableFuture<>();
+            pending.put(corrId, future);
+            publish(Event.request("search.request", query, PLUGIN_ID,
+                    corrId, workflowId, "search.result"));
+            System.out.println("[ORCHESTRATOR] Doc pre-search: " + query);
+            Event ev = awaitResponse(corrId, future, 30);
+            return ev != null ? ev.payload() : "";
+        } catch (Exception e) {
+            System.err.println("[ORCHESTRATOR] Doc search failed: " + e.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * Maps task keywords to precise API documentation search queries.
+     * Returns null when no specific library is detected (no search needed).
+     */
+    private static String buildDocsQuery(String text) {
+        if (text == null) return null;
+        String t = text.toLowerCase();
+
+        // Charts / graphs
+        if (t.contains("chart") || t.contains("graph") || t.contains("plot")
+                || t.contains("gráfico") || t.contains("grafico") || t.contains("barras")) {
+            return "XChart 3.8 CategoryChart horizontal bar BitmapEncoder.saveBitmap java example";
+        }
+        // PDF
+        if (t.contains("pdf")) {
+            return "Apache PDFBox 3.0 java PDDocument create add text save example";
+        }
+        // Excel
+        if (t.contains("excel") || t.contains("xlsx") || t.contains("spreadsheet")
+                || t.contains("planilha")) {
+            return "Apache POI 5 java XSSFWorkbook XSSFSheet write xlsx example";
+        }
+        // CSV
+        if (t.contains("csv")) {
+            return "OpenCSV 5 java CSVWriter CSVReader example jbang";
+        }
+        // QR code
+        if (t.contains("qr") || t.contains("qrcode")) {
+            return "ZXing 3 java QRCodeWriter MatrixToImageWriter generate PNG example";
+        }
+        // Image processing
+        if (t.contains("image") || t.contains("imagem") || t.contains("png") || t.contains("bitmap")
+                || t.contains("thumbnail") || t.contains("resize")) {
+            return "java ImageIO BufferedImage Graphics2D resize draw save PNG example";
+        }
+        // Zip / archive
+        if (t.contains("zip") || t.contains("compress") || t.contains("archive")) {
+            return "java.util.zip ZipOutputStream ZipEntry create write example";
+        }
+        // Crypto prices
+        if (t.contains("crypto") || t.contains("bitcoin") || t.contains("btc")
+                || t.contains("eth") || t.contains("solana") || t.contains("cotação")
+                || t.contains("cotacao") || t.contains("criptomoeda")) {
+            return "CoinGecko simple/price API free no-key java HttpClient JSON example 2024";
+        }
+        // Weather
+        if (t.contains("weather") || t.contains("clima") || t.contains("temperatura")
+                || t.contains("forecast")) {
+            return "Open-Meteo free weather API java HttpClient no API key example";
+        }
+        // HTML scraping
+        if (t.contains("scrape") || t.contains("scraping") || t.contains("html parse")
+                || t.contains("jsoup")) {
+            return "Jsoup 1.17 java parse HTML select element example jbang";
+        }
+        // SQL / SQLite
+        if (t.contains("sqlite") || t.contains("sql") || t.contains("database")
+                || t.contains("banco de dados")) {
+            return "SQLite JDBC java jbang Connection Statement query example";
+        }
+        // Email
+        if (t.contains("email") || t.contains("smtp") || t.contains("mail")) {
+            return "Jakarta Mail 2.0 java smtp send email example";
+        }
+        // saveChartAsBitmap or other known wrong XChart method
+        if (t.contains("savechartasbitmap") || t.contains("seriesrenderstyle")
+                || t.contains("charttheme")) {
+            return "XChart 3.8 BitmapEncoder.saveBitmap CategoryChart correct API java example";
+        }
+
+        return null; // no specific library detected
     }
 
     // =========================================================================
