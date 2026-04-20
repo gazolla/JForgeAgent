@@ -1,0 +1,5 @@
+{
+  "id": "console-plugin",
+  "subscribes": ["chat.response", "chat.prompt", "tool.result"],
+  "publishes":  ["chat.prompt", "tool.invoke"]
+}

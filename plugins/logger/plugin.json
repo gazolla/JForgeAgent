@@ -1,0 +1,5 @@
+{
+  "id": "logger-plugin",
+  "subscribes": ["chat.prompt", "chat.response", "plugin.register"],
+  "publishes":  []
+}

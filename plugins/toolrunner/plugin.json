@@ -1,0 +1,5 @@
+{
+  "id": "tool-runner",
+  "subscribes": ["tool.invoke", "llm.result"],
+  "publishes":  ["tool.result", "llm.invoke"]
+}
